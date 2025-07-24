@@ -27,6 +27,15 @@ class Node():
         self.power_pu = complex(p, q) / self.base_apparent_power
         self.voltage_pu = self.voltage / self.baseVoltage
         self.ideal_connected_with = ideal_connected_with
+        self.reactive_power = 0.0  # Initialize reactive power (in p.u.)
+
+    def add_reactive_power(self, q_pu):
+        """Method to add reactive power (in p.u.) to the node."""
+        self.reactive_power += q_pu
+
+    def get_reactive_power(self):
+        """Method to retrieve the total reactive power."""
+        return self.reactive_power
 
     def __str__(self):
         string = 'class=Node\n'
@@ -37,13 +46,14 @@ class Node():
         
 
 class Branch():
-    def __init__(self, uuid='', r=0.0, x=0.0, start_node=None, end_node=None,
-                 base_voltage=1.0, base_apparent_power=1.0):
+    def __init__(self, uuid='', shortCircuitEndTemperature=0.0, length=0.0, r=0.0, x=0.0, bch=0.0, start_node=None, end_node=None,
+                 base_voltage=1.0, base_apparent_power=1.0, tap_ratio=1.0, phase_shift=0.0):
         self.uuid = uuid
         self.baseVoltage = base_voltage
         self.base_apparent_power = base_apparent_power
         self.base_current = self.base_apparent_power / self.baseVoltage / np.sqrt(3)
         self.base_impedance = base_voltage ** 2 / self.base_apparent_power
+        self.base_admitance = 1/self.base_impedance
         self.start_node = start_node
         self.end_node = end_node
         self.r = r
@@ -54,6 +64,29 @@ class Branch():
         self.x_pu = x / self.base_impedance
         self.z_pu = self.r_pu + 1j * self.x_pu
         self.y_pu = 1 / self.z_pu if (self.z_pu != 0) else float("inf")
+        self.bch = bch
+        self.bch_pu = bch/self.base_admitance
+        self.length = length
+        self.shortCircuitEndTemperature=shortCircuitEndTemperature
+
+        # Initialize attributes
+        self.tap_ratio = tap_ratio
+        self.phase_shift = phase_shift
+        self.tap_updated = True  # Flag to track tap changes
+
+    def calculate_tap_effect(self):
+        """Recompute y_pu only if the tap ratio or phase shift has been updated."""
+        if not self.tap_updated:
+            return  # Skip recalculation if not updated
+
+        # Combine tap ratio and phase shift into a single complex multiplier
+        tap = self.tap_ratio * (np.cos(np.radians(self.phase_shift)) + 1j * np.sin(np.radians(self.phase_shift)))
+
+        # Adjust admittance (y_pu) based on tap settings
+        self.y_pu = self.y / (tap.conjugate() * tap)
+
+        # Reset the tap_updated flag after recalculation
+        self.tap_updated = False
 
     def __str__(self):
         string = 'class=Branch\n'
@@ -218,6 +251,8 @@ class System():
 
             base_voltage = ACLineSegment.BaseVoltage.nominalVoltage
             self.branches.append(Branch(uuid=uuid_ACLineSegment, r=ACLineSegment.r, x=ACLineSegment.x, 
+                                        bch=ACLineSegment.bch,
+                                        length=ACLineSegment.length, shortCircuitEndTemperature=ACLineSegment.shortCircuitEndTemperature,
                                         start_node=start_node, end_node=end_node, 
                                         base_voltage=base_voltage, base_apparent_power=base_apparent_power))
 

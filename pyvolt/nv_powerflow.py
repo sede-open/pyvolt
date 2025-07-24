@@ -29,6 +29,11 @@ def solve(system):
     h = np.zeros(2 * nodes_num)
     H = np.zeros((2 * nodes_num, 2 * nodes_num))
 
+    # Apply tap effects before solving
+    for branch in system.branches:
+        if branch.tap_updated:
+            branch.calculate_tap_effect()
+
     for node in system.nodes:
         if node.ideal_connected_with == '':
             i = node.index
@@ -67,10 +72,13 @@ def solve(system):
                     h[m] = np.inner(H[m], state)
                     h[m + 1] = np.inner(H[m + 1], state)
                 elif node_type is BusType.PQ:
+                    # Total reactive power for PQ buses, including capacitor contributions
+                    reactive_power_total = node.reactive_power + np.imag(node.power_pu)
+
                     z[m] = (np.real(node.power_pu) * np.real(V[i]) +
-                            np.imag(node.power_pu) * np.imag(V[i])) / (np.abs(V[i]) ** 2)
+                            reactive_power_total * np.imag(V[i])) / (np.abs(V[i]) ** 2)
                     z[m + 1] = (np.real(node.power_pu) * np.imag(V[i]) -
-                                np.imag(node.power_pu) * np.real(V[i])) / (np.abs(V[i]) ** 2)
+                                reactive_power_total * np.real(V[i])) / (np.abs(V[i]) ** 2)
                     h[m] = np.inner(H[m], state)
                     h[m + 1] = np.inner(H[m + 1], state)
                 elif node_type is BusType.PV:
